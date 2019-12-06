@@ -74,8 +74,8 @@ class Tests: XCTestCase {
             
             var properties: [FuseProperty] {
                 return [
-                    FuseProperty(name: title, weight: 0.7),
-                    FuseProperty(name: author, weight: 0.3),
+                    FuseProperty(name: "title", weight: 0.7),
+                    FuseProperty(name: "author", weight: 0.3),
                 ]
             }
         }
@@ -105,8 +105,8 @@ class Tests: XCTestCase {
             
             var properties: [FuseProperty] {
                 return [
-                    FuseProperty(name: title, weight: 0.3),
-                    FuseProperty(name: author, weight: 0.7),
+                    FuseProperty(name: "title", weight: 0.3),
+                    FuseProperty(name: "author", weight: 0.7),
                 ]
             }
         }
@@ -195,8 +195,8 @@ class Tests: XCTestCase {
             
             var properties: [FuseProperty] {
                 return [
-                    FuseProperty(name: title, weight: 0.5),
-                    FuseProperty(name: author, weight: 0.5),
+                    FuseProperty(name: "title", weight: 0.5),
+                    FuseProperty(name: "author", weight: 0.5),
                 ]
             }
         }
@@ -226,8 +226,8 @@ class Tests: XCTestCase {
             
             var properties: [FuseProperty] {
                 return [
-                    FuseProperty(name: title, weight: 0.5),
-                    FuseProperty(name: author, weight: 0.5),
+                    FuseProperty(name: "title", weight: 0.5),
+                    FuseProperty(name: "author", weight: 0.5),
                 ]
             }
         }
@@ -329,6 +329,39 @@ class Tests: XCTestCase {
         XCTAssertEqual(asyncResult[0].results[0].key, "author")
         
     }
+    
+    func testMatchingScore() {
+       
+        let books: [Book] = [
+            Book(author: "Oswaldo", title: "", publisher: Publisher(name: "", year: "2005")),
+            Book(author: "Dr. Ryan Friedrich", title: "", publisher: Publisher(name: "", year: "1934")),
+            Book(author: "Aviary Beauty", title: "", publisher: Publisher(name: "", year: "1991"))
+        ]
+        
+        let fuse = Fuse()
+        
+        // XCTest async
+        let expectation = self.expectation(description: #function)
+        var asyncResult: [Fuse.FusableSearchResult] = []
+        
+        fuse.search("Beauty", in: books){ results in
+            asyncResult = results
+            expectation.fulfill()
+        }
+
+        // Then
+        waitForExpectations(timeout: 10)
+        
+        
+        // two matches
+        XCTAssertEqual(asyncResult.count, 1)
+        
+        if(asyncResult.count > 0){
+            // the key should be the name of the property
+            XCTAssertEqual(asyncResult[0].results[0].key, "author")
+        }
+    }
+    
     
     //MARK: - Performance Tests
     func testPerformanceSync() {

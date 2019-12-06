@@ -86,11 +86,8 @@ class FuseUtilities {
     
     static func propertyStringValueUsingKey(_ key: String, instance: Any) -> String {
         
-        // values containing periods Also have spaces.  Here to support using value rather than key in FuseProperty
-        if(key.contains(" ")){ return key }
-        
         var mirror = Mirror(reflecting: instance)
-        var propertyValue: Any = mirror.descendant(key) ?? key
+        var propertyValue: Any = mirror.descendant(key) ?? ""
         // walk key path if dot notation is present
         let keyFragments = key.components(separatedBy: ".")
         // only do the work if there were key path fragments

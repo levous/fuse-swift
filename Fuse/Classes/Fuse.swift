@@ -48,6 +48,11 @@ public class Fuse {
         )]
     )
     
+    fileprivate lazy var syncQueue: DispatchQueue = { [unowned self] in
+        let label = "fuse.serial.queue"
+        return DispatchQueue(label: label) // DispatchQueue are serial by default
+        }()
+    
     fileprivate lazy var searchQueue: DispatchQueue = { [unowned self] in
         let label = "fuse.search.queue"
         return DispatchQueue(label: label, attributes: .concurrent)
@@ -522,11 +527,14 @@ extension Fuse {
                         continue
                     }
                     
-                    collectionResult.append((
-                        index: index,
-                        score: totalScore / Double(scores.count),
-                        results: propertyResults
-                    ))
+                    // write to shared data using serial queue
+                    self.syncQueue.async {
+                        collectionResult.append((
+                            index: index,
+                            score: totalScore / Double(scores.count),
+                            results: propertyResults
+                        ))
+                    }
                 }
                 
                 group.leave()
