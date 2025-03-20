@@ -8,17 +8,30 @@
 
 import Foundation
 
+public enum FusePropertyType {
+    case string
+    case stringArray
+}
+
+public struct FusePropertyResultItem {
+    public let key: String
+    public let score: Double
+    public let ranges: [CountableClosedRange<Int>]
+}
+
 public struct FuseProperty {
     let name: String
     let weight: Double
+    let propertyType: FusePropertyType
     
     public init (name: String) {
         self.init(name: name, weight: 1)
     }
     
-    public init (name: String, weight: Double) {
+    public init (name: String, weight: Double, propertyType: FusePropertyType = .string) {
         self.name = name
         self.weight = weight
+        self.propertyType = propertyType
     }
 }
 
@@ -41,11 +54,7 @@ public class Fuse {
     public typealias FusableSearchResult = (
         index: Int,
         score: Double,
-        results: [(
-            key: String,
-            score: Double,
-            ranges: [CountableClosedRange<Int>]
-        )]
+        results: [FusePropertyResultItem]
     )
     
     fileprivate lazy var syncQueue: DispatchQueue = { [unowned self] in
@@ -421,7 +430,7 @@ extension Fuse {
             var scores = [Double]()
             var totalScore = 0.0
             
-            var propertyResults = [(key: String, score: Double, ranges: [CountableClosedRange<Int>])]()
+            var propertyResults = [FusePropertyResultItem]()
 
             item.properties.forEach { property in
                 
@@ -434,7 +443,9 @@ extension Fuse {
                     
                     scores.append(score)
                     
-                    propertyResults.append((key: property.name, score: score, ranges: result.ranges))
+                    propertyResults.append(
+                        .init(key: property.name, score: score, ranges: result.ranges)
+                    )
                 }
             }
             
@@ -506,21 +517,56 @@ extension Fuse {
                     var scores = [Double]()
                     var totalScore = 0.0
                     
-                    var propertyResults = [(key: String, score: Double, ranges: [CountableClosedRange<Int>])]()
+                    var propertyResults = [FusePropertyResultItem]()
 
                     item.properties.forEach { property in
-
-                        let value = FuseUtilities.propertyStringValueUsingKey(property.name, instance: item)
-                        
-                        if let result = self.search(pattern, in: value) {
-                            let weight = property.weight == 1 ? 1 : 1 - property.weight
-                            let score = result.score * weight
-                            totalScore += score
+                        switch property.propertyType {
+                        case .string:
+                            let value = FuseUtilities.propertyStringValueUsingKey(property.name, instance: item)
                             
-                            scores.append(score)
+                            if let result = self.search(pattern, in: value) {
+                                let weight = property.weight == 1 ? 1 : 1 - property.weight
+                                let score = result.score * weight
+                                totalScore += score
+                                
+                                scores.append(score)
+                                
+                                propertyResults.append(
+                                    FusePropertyResultItem(
+                                        key: property.name,
+                                        score: score,
+                                        ranges: result.ranges
+                                    )
+                                )
+                            }
+                        case .stringArray:
+                            let values: [String] = FuseUtilities.propertyValueUsingKey(
+                                property.name,
+                                instance: item,
+                                defaultValue: []
+                            )
                             
-                            propertyResults.append((key: property.name, score: score, ranges: result.ranges))
+                            // TODO: This does not identify an array item and duplicates on the same property.name,
+                            // Each item should be independently identified
+                            if !values.isEmpty {
+                                for value in values {
+                                    if let result = self.search(pattern, in: value) {
+                                        let weight = property.weight == 1 ? 1 : 1 - property.weight
+                                        let score = result.score * weight
+                                        totalScore += score
+                                        scores.append(score)
+                                        propertyResults.append(
+                                            FusePropertyResultItem(
+                                                key: property.name,
+                                                score: score,
+                                                ranges: result.ranges
+                                            )
+                                        )
+                                    }
+                                }
+                            }
                         }
+
                     }
                     
                     if scores.count == 0 {
