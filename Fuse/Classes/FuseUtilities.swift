@@ -86,8 +86,13 @@ class FuseUtilities {
     
     static func propertyStringValueUsingKey(_ key: String, instance: Any) -> String {
         
+        propertyValueUsingKey(key, instance: instance, defaultValue: key)
+    }
+    
+    static func propertyValueUsingKey<T: Any>(_ key: String, instance: Any, defaultValue: T) -> T {
+        
         // values containing periods Also have spaces.  Here to support using value rather than key in FuseProperty
-        if(key.contains(" ")){ return key }
+        if(key.contains(" ")){ return defaultValue }
         
         var mirror = Mirror(reflecting: instance)
         var propertyValue: Any = mirror.descendant(key) ?? key
@@ -98,10 +103,12 @@ class FuseUtilities {
             // iterate fragments
             keyFragments.forEach{ keyFragment in
                 // retrieve property value
-                propertyValue = mirror.descendant(keyFragment) ?? ""
+                if let descendentValue = mirror.descendant(keyFragment) {
+                    propertyValue = descendentValue
+                }
                 // reflect on property value
                 mirror = Mirror(reflecting: propertyValue)
-                // if optional, descendents aren't there ;-\
+                // if optional, descendants aren't there ;-\
                 if(mirror.displayStyle == .optional) {
                     // unwrap optional
                     if let some = mirror.children.first?.value {
@@ -113,6 +120,6 @@ class FuseUtilities {
                 }
             }
         }
-        return propertyValue as? String ?? key
+        return propertyValue as? T ?? defaultValue
     }
 }

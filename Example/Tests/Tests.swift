@@ -250,16 +250,18 @@ class Tests: XCTestCase {
         let year: String
     }
     
-    struct Book: Fuseable {
+        struct Book: Fuseable {
                   
         let author: String
         let title: String?
+        let tags: [String]
         let publisher: Publisher?
 
         var properties: [FuseProperty] {
             return [
-                FuseProperty(name: "title", weight: 0.3),
-                FuseProperty(name: "author", weight: 0.6),
+                FuseProperty(name: "title", weight: 0.2),
+                FuseProperty(name: "tags", weight: 0.2, propertyType: .stringArray),
+                FuseProperty(name: "author", weight: 0.4),
                 FuseProperty(name: "publisher.name", weight: 0.1),
             ]
         }
@@ -268,11 +270,48 @@ class Tests: XCTestCase {
     func testListOfFuseableStruct() {
        
         let books: [Book] = [
-            Book(author: "John X", title: "Old Man's War fiction", publisher: Publisher(name: "Tor Books", year: "2005")),
-            Book(author: "P.D. Mans", title: "Right Ho Jeeves", publisher: Publisher(name: "Herbert Jenkins", year: "1934")),
-            Book(author: "Robert M. Pirsig", title: "Lila", publisher: Publisher(name: "Bantom Books", year: "1991")),
-            Book(author: "Yuval Noah Harari", title: "Sapiens", publisher: Publisher(name: "Harper", year: "2015")),
-            Book(author: "Homer", title: "The Odyssey", publisher: nil)
+            Book(
+                author: "John X",
+                title: "Old Man's War fiction",
+                tags: ["fiction", "war"],
+                publisher: Publisher(
+                    name: "Tor Books",
+                    year: "2005"
+                )
+            ),
+            Book(
+                author: "P.D. Mans",
+                title: "Right Ho Jeeves",
+                tags: ["yo"],
+                publisher: Publisher(
+                    name: "Herbert Jenkins",
+                    year: "1934"
+                )
+            ),
+            Book(
+                author: "Robert M. Pirsig",
+                title: "Lila",
+                tags: [],
+                publisher: Publisher(
+                    name: "Bantom Books",
+                    year: "1991"
+                )
+            ),
+            Book(
+                author: "Yuval Noah Harari",
+                title: "Sapiens",
+                tags: ["science"],
+                publisher: Publisher(
+                    name: "Harper",
+                    year: "2015"
+                )
+            ),
+            Book(
+                author: "Homer",
+                title: "The Odyssey",
+                tags: ["epic"],
+                publisher: nil
+            )
         ]
         
         let fuse = Fuse()
@@ -300,11 +339,48 @@ class Tests: XCTestCase {
     func testListOfFuseableStructASync() {
        
         let books: [Book] = [
-            Book(author: "John X", title: "Old Man's War fiction", publisher: Publisher(name: "Tor Books", year: "2005")),
-            Book(author: "P.D. Mans", title: "Right Ho Jeeves", publisher: Publisher(name: "Herbert Jenkins", year: "1934")),
-            Book(author: "Robert M. Pirsig", title: "Lila", publisher: Publisher(name: "Bantom Books", year: "1991")),
-            Book(author: "Yuval Noah Harari", title: "Sapiens", publisher: Publisher(name: "Harper", year: "2015")),
-            Book(author: "Homer", title: "The Odyssey", publisher: nil)
+            Book(
+                author: "John X",
+                title: "Old Man's War fiction",
+                tags: [],
+                publisher: Publisher(
+                    name: "Tor Books",
+                    year: "2005"
+                )
+            ),
+            Book(
+                author: "P.D. Mans",
+                title: "Right Ho Jeeves",
+                tags: [],
+                publisher: Publisher(
+                    name: "Herbert Jenkins",
+                    year: "1934"
+                )
+            ),
+            Book(
+                author: "Robert M. Pirsig",
+                title: "Lila",
+                tags: [],
+                publisher: Publisher(
+                    name: "Bantom Books",
+                    year: "1991"
+                )
+            ),
+            Book(
+                author: "Yuval Noah Harari",
+                title: "Sapiens",
+                tags: [],
+                publisher: Publisher(
+                    name: "Harper",
+                    year: "2015"
+                )
+            ),
+            Book(
+                author: "Homer",
+                title: "The Odyssey",
+                tags: ["man"],
+                publisher: nil
+            )
         ]
         
         let fuse = Fuse()
@@ -322,8 +398,8 @@ class Tests: XCTestCase {
         waitForExpectations(timeout: 10)
         
         
-        // two matches
-        XCTAssertEqual(asyncResult.count, 3)
+        // four matches
+        XCTAssertEqual(asyncResult.count, 4)
         
         // the key should be the name of the property
         XCTAssertEqual(asyncResult[0].results[0].key, "author")
