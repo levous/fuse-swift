@@ -387,7 +387,7 @@ class Tests: XCTestCase {
         
         // XCTest async
         let expectation = self.expectation(description: #function)
-        var asyncResult: [Fuse.FusableSearchResult] = []
+        var asyncResult: [FusableSearchResult] = []
         
         fuse.search("man", in: books){ results in
             asyncResult = results
@@ -402,23 +402,23 @@ class Tests: XCTestCase {
         XCTAssertEqual(asyncResult.count, 4)
         
         // the key should be the name of the property
-        XCTAssertEqual(asyncResult[0].results[0].key, "author")
+        XCTAssertEqual(asyncResult[0].results[0].key, "tags")
         
     }
     
     func testMatchingScore() {
        
         let books: [Book] = [
-            Book(author: "Oswaldo", title: "", publisher: Publisher(name: "", year: "2005")),
-            Book(author: "Dr. Ryan Friedrich", title: "", publisher: Publisher(name: "", year: "1934")),
-            Book(author: "Aviary Beauty", title: "", publisher: Publisher(name: "", year: "1991"))
+            Book(author: "Oswaldo", title: "", tags: [], publisher: Publisher(name: "", year: "2005")),
+            Book(author: "Dr. Ryan Friedrich", title: "", tags: [], publisher: Publisher(name: "", year: "1934")),
+            Book(author: "Aviary Beauty", title: "", tags: [], publisher: Publisher(name: "", year: "1991"))
         ]
         
         let fuse = Fuse()
         
         // XCTest async
         let expectation = self.expectation(description: #function)
-        var asyncResult: [Fuse.FusableSearchResult] = []
+        var asyncResult: [FusableSearchResult] = []
         
         fuse.search("Beauty", in: books){ results in
             asyncResult = results
@@ -436,6 +436,106 @@ class Tests: XCTestCase {
             // the key should be the name of the property
             XCTAssertEqual(asyncResult[0].results[0].key, "author")
         }
+    }
+    
+    func testMatchingArrayItems() {
+        let books: [Book] = [
+            Book(
+                author: "Oswaldo",
+                title: "",
+                tags: [
+                    "noob",
+                    "buh",
+                    "doob"
+                ],
+                publisher: Publisher(
+                    name: "",
+                    year: "2005"
+                )
+            ),
+            Book(
+                author: "Dr. Ryan Friedrich",
+                title: "",
+                tags: ["Doc", "rich"],
+                publisher: Publisher(
+                    name: "",
+                    year: "1934"
+                )
+            ),
+            Book(
+                author: "Aviary Beauty",
+                title: "",
+                tags: ["food", "dog"],
+                publisher: Publisher(
+                    name: "",
+                    year: "1991"
+                )
+            ),
+            Book(
+                author: "Tom Selleck",
+                title: "How to Grow a Mustache",
+                tags: ["70s", "caterpillar"],
+                publisher: Publisher(
+                    name: "",
+                    year: "1985"
+                )
+            )
+        ]
+        
+        let fuse = Fuse()
+        
+        // XCTest async
+        let expectation = self.expectation(description: #function)
+        var asyncResult: [FusableSearchResult] = []
+        
+        fuse.search("oob", in: books){ results in
+            asyncResult = results
+            expectation.fulfill()
+        }
+        
+        // Then
+        waitForExpectations(timeout: 10)
+        
+        
+        // two matches
+        XCTAssertEqual(asyncResult.count, 2)
+        
+        asyncResult.forEach { fusableSearchResult in
+            switch fusableSearchResult.index {
+            case 0:
+                // should be noob and doob
+                XCTAssertEqual(fusableSearchResult.results.count, 2)
+                let noob = fusableSearchResult.results.first(where: {
+                    guard let arrayResultItem = $0 as? FuseStringArrayPropertyResultItem else {
+                        return false
+                    }
+                    return arrayResultItem.key == "tags" && arrayResultItem.itemIndex == 0
+                    
+                })
+                XCTAssertNotNil(noob)
+                let doob = fusableSearchResult.results.first(where: {
+                    guard let arrayResultItem = $0 as? FuseStringArrayPropertyResultItem else {
+                        return false
+                    }
+                    return arrayResultItem.key == "tags" && arrayResultItem.itemIndex == 2
+                    
+                })
+                XCTAssertNotNil(doob)
+                
+            case 2:
+                let food = fusableSearchResult.results.first(where: {
+                    guard let arrayResultItem = $0 as? FuseStringArrayPropertyResultItem else {
+                        return false
+                    }
+                    return arrayResultItem.key == "tags" && arrayResultItem.itemIndex == 0
+                    
+                })
+                XCTAssertNotNil(food)
+            default:
+                XCTFail("Unexpected result")
+            }
+        }
+        
     }
     
     

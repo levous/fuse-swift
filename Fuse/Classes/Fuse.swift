@@ -13,8 +13,27 @@ public enum FusePropertyType {
     case stringArray
 }
 
-public struct FusePropertyResultItem {
+public struct FusableSearchResult {
+    public let index: Int
+    public let score: Double
+    public let results: [FusePropertyResultItem]
+}
+
+public protocol FusePropertyResultItem {
+    var key: String { get }
+    var score: Double { get }
+    var ranges: [CountableClosedRange<Int>] { get }
+}
+
+public struct FuseStringPropertyResultItem: FusePropertyResultItem {
     public let key: String
+    public let score: Double
+    public let ranges: [CountableClosedRange<Int>]
+}
+
+public struct FuseStringArrayPropertyResultItem: FusePropertyResultItem {
+    public let key: String
+    public let itemIndex: Int
     public let score: Double
     public let ranges: [CountableClosedRange<Int>]
 }
@@ -50,12 +69,6 @@ public class Fuse {
     public typealias Pattern = (text: String, len: Int, mask: Int, alphabet: [Character: Int])
     
     public typealias SearchResult = (index: Int, score: Double, ranges: [CountableClosedRange<Int>])
-    
-    public typealias FusableSearchResult = (
-        index: Int,
-        score: Double,
-        results: [FusePropertyResultItem]
-    )
     
     fileprivate lazy var syncQueue: DispatchQueue = { [unowned self] in
         let label = "fuse.serial.queue"
@@ -330,7 +343,7 @@ extension Fuse {
         return self.search(self.createPattern(from: text), in: aString)
     }
     
-    /// Searches for a text pattern in an array of srings
+    /// Searches for a text pattern in an array of strings
     ///
     /// - Parameters:
     ///   - text: The pattern string to search for
@@ -369,12 +382,13 @@ extension Fuse {
             let chunk = Array(aList[$0..<min($0 + chunkSize, count)])
             group.enter()
             self.searchQueue.async {
+                var batchItems: [SearchResult] = []
                 for (index, item) in chunk.enumerated() {
                     if let result = self.search(pattern, in: item) {
-                        items.append((index, result.score, result.ranges))
+                        batchItems.append((index, result.score, result.ranges))
                     }
                 }
-                
+                items.append(contentsOf: batchItems)
                 group.leave()
             }
         }
@@ -422,7 +436,9 @@ extension Fuse {
     ///   - aList: The list of `Fuseable` objects in which to search
     /// - Returns: A list of `CollectionResult` objects
     public func search(_ text: String, in aList: [Fuseable]) -> [FusableSearchResult] {
-        let pattern = self.createPattern(from: text)
+        guard let pattern = self.createPattern(from: text) else {
+            return []
+        }
         
         var collectionResult = [FusableSearchResult]()
         
@@ -431,29 +447,19 @@ extension Fuse {
             var totalScore = 0.0
             
             var propertyResults = [FusePropertyResultItem]()
-
+            
             item.properties.forEach { property in
-                
-                let value = FuseUtilities.propertyStringValueUsingKey(property.name, instance: item)
-                
-                if let result = self.search(pattern, in: value) {
-                    let weight = property.weight == 1 ? 1 : 1 - property.weight
-                    let score = (result.score == 0 && weight == 1 ? 0.001 : result.score) * weight
-                    totalScore += score
-                    
-                    scores.append(score)
-                    
-                    propertyResults.append(
-                        .init(key: property.name, score: score, ranges: result.ranges)
-                    )
-                }
+                self.fusePropertySearch(pattern: pattern, property: property, item: item)
+                    .forEach { resultItem in
+                        totalScore += resultItem.score
+                        scores.append(resultItem.score)
+                        propertyResults.append(resultItem)
+                    }
             }
             
-            if scores.count == 0 {
-                continue
-            }
+            if scores.count == 0 { continue }
             
-            collectionResult.append((
+            collectionResult.append(.init(
                 index: index,
                 score: totalScore / Double(scores.count),
                 results: propertyResults
@@ -502,7 +508,10 @@ extension Fuse {
     ///   - chunkSize: The size of a single chunk of the array. For example, if the array has `1000` items, it may be useful to split the work into 10 chunks of 100. This should ideally speed up the search logic. Defaults to `100`.
     ///   - completion: The handler which is executed upon completion
     public func search(_ text: String, in aList: [Fuseable], chunkSize: Int = 100, completion: @escaping ([FusableSearchResult]) -> Void) {
-        let pattern = self.createPattern(from: text)
+        guard let pattern = self.createPattern(from: text) else {
+            completion([])
+            return
+        }
         
         let group = DispatchGroup()
         let count = aList.count
@@ -513,6 +522,7 @@ extension Fuse {
             let chunk = Array(aList[$0..<min($0 + chunkSize, count)])
             group.enter()
             self.searchQueue.async {
+                var batchResults: [FusableSearchResult] = []
                 for (index, item) in chunk.enumerated() {
                     var scores = [Double]()
                     var totalScore = 0.0
@@ -520,70 +530,30 @@ extension Fuse {
                     var propertyResults = [FusePropertyResultItem]()
 
                     item.properties.forEach { property in
-                        switch property.propertyType {
-                        case .string:
-                            let value = FuseUtilities.propertyStringValueUsingKey(property.name, instance: item)
-                            
-                            if let result = self.search(pattern, in: value) {
-                                let weight = property.weight == 1 ? 1 : 1 - property.weight
-                                let score = result.score * weight
-                                totalScore += score
-                                
-                                scores.append(score)
-                                
-                                propertyResults.append(
-                                    FusePropertyResultItem(
-                                        key: property.name,
-                                        score: score,
-                                        ranges: result.ranges
-                                    )
-                                )
+                        self.fusePropertySearch(pattern: pattern, property: property, item: item)
+                            .forEach { resultItem in
+                                totalScore += resultItem.score
+                                scores.append(resultItem.score)
+                                propertyResults.append(resultItem)
                             }
-                        case .stringArray:
-                            let values: [String] = FuseUtilities.propertyValueUsingKey(
-                                property.name,
-                                instance: item,
-                                defaultValue: []
-                            )
-                            
-                            // TODO: This does not identify an array item and duplicates on the same property.name,
-                            // Each item should be independently identified
-                            if !values.isEmpty {
-                                for value in values {
-                                    if let result = self.search(pattern, in: value) {
-                                        let weight = property.weight == 1 ? 1 : 1 - property.weight
-                                        let score = result.score * weight
-                                        totalScore += score
-                                        scores.append(score)
-                                        propertyResults.append(
-                                            FusePropertyResultItem(
-                                                key: property.name,
-                                                score: score,
-                                                ranges: result.ranges
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
                     }
                     
                     if scores.count == 0 {
                         continue
                     }
                     
-                    // write to shared data using serial queue
-                    self.syncQueue.async {
-                        collectionResult.append((
-                            index: index,
-                            score: totalScore / Double(scores.count),
-                            results: propertyResults
-                        ))
-                    }
+                    batchResults.append(.init(
+                        index: index,
+                        score: totalScore / Double(scores.count),
+                        results: propertyResults
+                    ))
                 }
                 
-                group.leave()
+                // write to shared data using serial queue
+                self.syncQueue.async {
+                    collectionResult.append(contentsOf: batchResults)
+                    group.leave()
+                }
             }
         }
         
@@ -591,6 +561,52 @@ extension Fuse {
             let sorted = collectionResult.sorted { $0.score < $1.score }
             DispatchQueue.main.async {
                 completion(sorted)
+            }
+        }
+    }
+    
+    private func fusePropertySearch(pattern: Pattern, property: FuseProperty, item: Fuseable) -> [FusePropertyResultItem] {
+        switch property.propertyType {
+        case .string:
+            let value = FuseUtilities.propertyStringValueUsingKey(property.name, instance: item)
+            
+            if let result = self.search(pattern, in: value) {
+                let weight = property.weight == 1 ? 1 : 1 - property.weight
+                let score = result.score * weight
+                
+                return [FuseStringPropertyResultItem(
+                    key: property.name,
+                    score: score,
+                    ranges: result.ranges
+                )]
+            } else {
+                return []
+            }
+        case .stringArray:
+            let values: [String] = FuseUtilities.propertyValueUsingKey(
+                property.name,
+                instance: item,
+                defaultValue: []
+            )
+        
+            if values.isEmpty {
+                return []
+            } else {
+                return Array(values.enumerated()).compactMap { (index, value) in
+                    if let result = self.search(pattern, in: value) {
+                        let weight = property.weight == 1 ? 1 : 1 - property.weight
+                        let score = result.score * weight
+                        return FuseStringArrayPropertyResultItem(
+                            key: property.name,
+                            itemIndex: index,
+                            score: score,
+                            ranges: result.ranges
+                        )
+                    }
+                        
+                    // no match
+                    return nil
+                }
             }
         }
     }
